@@ -385,7 +385,11 @@ function registerEvents() {
         const modalObject = document.getElementById(el.parentElement.id);
         if(modalObject.id==="modalPrompt") return false;
         // if modal is modalForm and input is equal the data item
+<<<<<<< HEAD
         if(modalObject.id === "modalForm" && modalForm.getAttribute("data-item") !== modalFormInput.value) {
+=======
+        if(modalObject.id === "modalForm" && modalForm.getAttribute("data-item") !== document.getElementById("modalFormInput").value) {
+>>>>>>> develop
           getConfirmation(resetModal, translations.modalBackgroundAttention, modalObject);
         } else {
           resetModal(modalObject).then(function(result) {
@@ -462,6 +466,11 @@ function registerKeyboardShortcuts() {
       }
     }, true)
     window.addEventListener("keyup", function(event) {
+      // escape in context menu
+      if(event.key === "Escape" && todoContext.classList.contains("is-active")) {
+        todoContext.classList.remove("is-active");
+        todoContext.removeAttribute("data-item");
+      }
       // switch files
       const regex=/^[1-9]+$/;
       if(event.key.match(regex) && userData.files.length > 1 && userData.files[event.key-1] && !modalForm.classList.contains("is-active") && (document.activeElement.id!="todoTableSearch" && document.activeElement.id!="filterContextInput" && document.activeElement.id!="modalFormInput")) {
@@ -560,9 +569,9 @@ function registerKeyboardShortcuts() {
         form.setPriority("down");
       }
       // clear priority
-      if(!(event.ctrlKey || event.metaKey) && event.altKey && (event.key === "ArrowRight" || event.key === "ArrowLeft")) {
-        form.setPriority(null);
-      }
+      // if(!(event.ctrlKey || event.metaKey) && event.altKey && (event.key === "ArrowRight" || event.key === "ArrowLeft")) {
+      //   form.setPriority(null);
+      // }
       // set priority directly
       if(event.altKey && event.key.length===1 && event.key.match(/[A-Z]/i)) {
         form.setPriority(event.key.substr(0,1)).then(response => {
@@ -785,7 +794,7 @@ function getBadgeCount() {
   });
   return count;
 }
-async function startBuilding(append, loadAll) {
+async function startBuilding(loadAll) {
   try {
 
     t0 = performance.now();
@@ -798,7 +807,7 @@ async function startBuilding(append, loadAll) {
 
     userData = await getUserData();
 
-    await todos.generateTable(groups, append, loadAll);
+    await todos.generateTable(groups, loadAll);
 
     configureMainView();
 

@@ -2,7 +2,7 @@
 import "../../node_modules/jstodotxt/jsTodoExtensions.js";
 import { getActiveFile, userData, appData, handleError, translations, setUserData, startBuilding, getConfirmation, resetModal } from "../render.js";
 import { _paq } from "./matomo.mjs";
-import { categories } from "./filters.mjs";
+import { categories, selectFilter } from "./filters.mjs";
 import { generateRecurrence } from "./recurrences.mjs";
 import { convertDate, isToday, isTomorrow, isPast } from "./date.mjs";
 import { show } from "./form.mjs";
@@ -47,7 +47,7 @@ const tableContainerContent = document.createDocumentFragment();
 const todoTableBodyRowTemplate = document.createElement("div");
 const todoTableBodyCellCheckboxTemplate  = document.createElement("div");
 const todoTableBodyCellTextTemplate = document.createElement("a");
-const tableContainerCategoriesTemplate = document.createElement("span");
+const tableContainerCategoriesTemplate = document.createElement("div");
 const todoTableBodyCellPriorityTemplate = document.createElement("div");
 const todoTableBodyCellDueDateTemplate = document.createElement("span");
 const todoTableBodyCellRecurrenceTemplate = document.createElement("span");
@@ -56,16 +56,15 @@ const todoTableBodyCellHiddenTemplate = document.createElement("span");
 const item = { previous: "" }
 let
   items,
-  clusterCounter,
-  clusterSize = Math.ceil(window.innerHeight/30), // 35 being the pixel height of one todo in compact mode
-  clusterThreshold = 0,
-  //stopBuilding = false,
-  visibleRows = 0;
+  clusterCounter = 0,
+  clusterSize = Math.ceil(window.innerHeight/32), // 32 being the pixel height of one todo in compact mode
+  clusterThreshold = clusterSize,
+  visibleRows,
+  todoRows;
 
 todoTableWrapper.addEventListener("scroll", function(event) {
   if(visibleRows>=items.filtered.length) return false;
   if(Math.floor(event.target.scrollHeight - event.target.scrollTop) <= event.target.clientHeight) {
-    //stopBuilding = false;
     startBuilding(true);
   }
 });
@@ -89,21 +88,14 @@ function showResultStats() {
     return Promise.reject(error);
   }
 }
-function configureTodoTableTemplate(append) {
+function configureTodoTableTemplate() {
   try {
-    // setting up for the first cluster
-    if(!append) {
-      todoTable.innerHTML = "";
-      visibleRows = 0;
-      clusterThreshold = 0;
-      //stopBuilding = false;
-    }
     todoTableBodyRowTemplate.setAttribute("class", "todo");
     todoTableBodyCellCheckboxTemplate.setAttribute("class", "cell checkbox");
     todoTableBodyCellTextTemplate.setAttribute("class", "cell text");
     todoTableBodyCellTextTemplate.setAttribute("tabindex", 0);
     todoTableBodyCellTextTemplate.setAttribute("href", "#");
-    tableContainerCategoriesTemplate.setAttribute("class", "categories");
+    tableContainerCategoriesTemplate.setAttribute("class", "cell categories");
     todoTableBodyCellDueDateTemplate.setAttribute("class", "cell itemDueDate");
     todoTableBodyCellRecurrenceTemplate.setAttribute("class", "cell recurrence");
     return Promise.resolve("Success: Table templates set up");
@@ -115,10 +107,6 @@ function configureTodoTableTemplate(append) {
 function generateItems(content) {
   try {
     items = { objects: TodoTxt.parse(content, [ new DueExtension(), new HiddenExtension(), new RecExtension(), new ThresholdExtension() ]) }
-    // items.objects = items.objects.filter(function(item) {
-    //   if(!item.text && !item.h) return false;
-    //   return true;
-    // });
     items.complete = items.objects.filter(function(item) { return item.complete === true });
     items.incomplete = items.objects.filter(function(item) { return item.complete === false });
     items.objects = items.objects.filter(function(item) { return item.toString() != "" });
@@ -166,19 +154,17 @@ function generateGroups(items) {
   });
   return Promise.resolve(items)
 }
-async function generateTable(groups, append, loadAll) {
+async function generateTable(groups, loadAll) {
   try {
+    todoRows = new Array;
+    // TODO Overthink due to performance reasons
+    todoTable.textContent = "";
     // configure stats
     showResultStats();
     // prepare the templates for the table
-    await configureTodoTableTemplate(append);
+    await configureTodoTableTemplate();
     // reset cluster count for this run
-    clusterCounter = 0;
     for (let group in groups) {
-      // if(stopBuilding) {
-      //   stopBuilding = false;
-      //   break;
-      // }
       // create a divider row
       let dividerRow;
       // completed todos
@@ -202,19 +188,9 @@ async function generateTable(groups, append, loadAll) {
       } else {
         dividerRow = document.createRange().createContextualFragment("<div class=\"group\"></div>")
       }
-      // add divider row only if it doesn't exist yet
-      if(!append && !document.getElementById(userData.sortBy[0] + groups[group][0]) && dividerRow) tableContainerContent.appendChild(dividerRow);
+      if(!document.getElementById(userData.sortBy[0] + groups[group][0]) && dividerRow) todoRows.push(dividerRow);
       for (let item in groups[group][1]) {
         let todo = groups[group][1][item];
-        //TODO: Explain this, maybe refactor
-        if(!loadAll && clusterCounter<clusterThreshold) {
-          clusterCounter++;
-          continue;
-        } else if(!loadAll && (visibleRows===clusterSize+clusterThreshold) || visibleRows===items.filtered.length ) {
-          clusterThreshold = visibleRows;
-          //stopBuilding = true;
-          break;
-        }
         // if this todo is not a recurring one the rec value will be set to null
         if(!todo.rec) todo.rec = null;
         // incompleted todos with due date
@@ -234,9 +210,21 @@ async function generateTable(groups, append, loadAll) {
             });
           }
         }
-        tableContainerContent.appendChild(generateTableRow(todo));
+        todoRows.push(generateTableRow(todo));
       }
     }
+    for (let row in todoRows) {
+      clusterCounter++;
+      visibleRows++;
+      if(clusterCounter === clusterThreshold) {
+        clusterThreshold = clusterThreshold + clusterCounter;
+        break;
+      } else if(visibleRows < clusterThreshold) {
+        continue;
+      }
+      tableContainerContent.appendChild(todoRows[row]);
+    }
+    clusterCounter = 0;
     todoTable.appendChild(tableContainerContent);
     return Promise.resolve("Success: Todo table generated");
   } catch(error) {
@@ -246,8 +234,6 @@ async function generateTable(groups, append, loadAll) {
 }
 function generateTableRow(todo) {
   try {
-    clusterCounter++;
-    visibleRows++;
     // create nodes from templates
     let todoTableBodyRow = todoTableBodyRowTemplate.cloneNode(true);
     let todoTableBodyCellCheckbox = todoTableBodyCellCheckboxTemplate.cloneNode(true);
@@ -332,19 +318,6 @@ function generateTableRow(todo) {
         if(userData.matomoEvents) _paq.push(["trackEvent", "Todo-Table", "Click on Todo item"]);
       }
     }
-    // cell for the categories
-    categories.forEach(category => {
-      if(todo[category] && category!="priority") {
-        todo[category].forEach(element => {
-          let todoTableBodyCellCategory = document.createElement("span");
-          todoTableBodyCellCategory.setAttribute("class", "tag " + category);
-          todoTableBodyCellCategory.innerHTML = element;
-          tableContainerCategories.appendChild(todoTableBodyCellCategory);
-        });
-      }
-    });
-    // only add the categories to text cell if it has child nodes
-    if(tableContainerCategories.hasChildNodes()) todoTableBodyCellText.appendChild(tableContainerCategories);
     // check for and add a given due date
     if(todo.due) {
       var tag = convertDate(todo.due);
@@ -372,8 +345,36 @@ function generateTableRow(todo) {
       // append the due date to the text item
       todoTableBodyCellText.appendChild(todoTableBodyCellRecurrence);
     }
+
     // add the text cell to the row
     todoTableBodyRow.appendChild(todoTableBodyCellText);
+    // cell for the categories
+    categories.forEach(category => {
+
+
+      if(todo[category] && category!="priority") {
+        todo[category].forEach(element => {
+          let todoTableBodyCellCategory = document.createElement("a");
+          todoTableBodyCellCategory.setAttribute("class", "tag " + category);
+          todoTableBodyCellCategory.onclick = function() {
+            selectFilter(element, category);
+          }
+          todoTableBodyCellCategory.innerHTML = element;
+
+          // selected filters are empty, unless they were persisted
+          if(userData.selectedFilters && userData.selectedFilters.length>0) {
+            let selectedFilters = JSON.parse(userData.selectedFilters);
+            selectedFilters.forEach(function(item) {
+              if(JSON.stringify(item) === '["'+element+'","'+category+'"]') todoTableBodyCellCategory.classList.toggle("is-dark")
+            });
+          }
+
+          tableContainerCategories.appendChild(todoTableBodyCellCategory);
+        });
+      }
+    });
+    // only add the categories to text cell if it has child nodes
+    if(tableContainerCategories.hasChildNodes()) todoTableBodyRow.appendChild(tableContainerCategories);
     todoTableBodyRow.addEventListener("contextmenu", event => {
       //todoContextUseAsTemplate.focus();
       todoContext.style.left = event.x + "px";
@@ -455,7 +456,7 @@ function setTodoComplete(todo) {
       todo.complete = false;
       todo.completed = null;
       // delete old item from array and add the new one at it's position
-      items.objects.splice(index, 1, todo);
+      //items.objects.splice(index, 1, todo);
     // Mark item as complete
     } else if(!todo.complete) {
       if(todo.due) {
@@ -471,11 +472,18 @@ function setTodoComplete(todo) {
       }
       todo.complete = true;
       todo.completed = new Date();
-      // delete old todo from array and add the new one at it's position
-      items.objects.splice(index, 1, todo);
       // if recurrence is set start generating the recurring todo
       if(todo.rec) generateRecurrence(todo)
+      if(todo.priority) {
+        // and preserve prio
+        todo.text += " pri:" + todo.priority
+        // finally remove priority
+        todo.priority = null;
+      }
+
     }
+    // delete old todo from array and add the new one at it's position
+    items.objects.splice(index, 1, todo);
     //write the data to the file
     window.api.send("writeToFile", [items.objects.join("\n").toString() + "\n"]);
     return Promise.resolve("Success: Changes written to file: " + getActiveFile());
@@ -647,4 +655,4 @@ function generateHash(string) {
     (((prevHash << 5) - prevHash) + currVal.charCodeAt(0))|0, 0);
 }
 
-export { generateItems, generateGroups, generateTable, items, item, visibleRows, setTodoComplete, archiveTodos, addTodo };
+export { generateItems, generateGroups, generateTable, items, item, setTodoComplete, archiveTodos, addTodo };
