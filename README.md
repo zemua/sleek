@@ -67,6 +67,7 @@ You can download sleek for Windows, MacOS and Linux from
 2. Clone sleek `git clone https://github.com/ransome1/sleek.git` and cd into sleeks directory
 3. Install dependencies `yarn install --production`
 4. Build sleek `yarn build:windows` or `yarn build:linux` or `yarn build:macos`
+If a command is not found: 'npm install command' should do it with sass and peggy
 
 ### sleeks state of development
 A prioritized backlog of new features and known issues can be found <a href="https://github.com/ransome1/sleek/projects/2">here</a>.
