@@ -1,12 +1,13 @@
 "use strict";
 import "../../node_modules/jstodotxt/jsTodoExtensions.js";
 import { userData, setUserData, translations } from "../render.js";
-import { handleError } from "./helper.mjs";
+import { handleError, formatDate } from "./helper.mjs";
 import { _paq } from "./matomo.mjs";
 import { RecExtension, SugarDueExtension, ThresholdExtension } from "./todotxtExtensions.mjs";
 import { generateFilterData } from "./filters.mjs";
 import { items, item, setTodoComplete } from "./todos.mjs";
 import { datePickerInput, datePicker } from "./datePicker.mjs";
+import { datePickerThresholdInput, datePickerThreshold } from "./datePickerThreshold.mjs";
 import { createModalJail } from "./jail.mjs";
 import * as recurrencePicker from "./recurrencePicker.mjs";
 import { resetModal } from "./helper.mjs";
@@ -250,12 +251,40 @@ function setDueDate(days) {
     return Promise.reject(error);
   }
 }
+function setThreshold(days) {
+  try {
+    const todo = new TodoTxtItem(document.getElementById("modalFormInput").value, [ new DueExtension(), new HiddenExtension(), new RecExtension(), new ThresholdExtension() ]);
+    if(days===0) {
+      todo.t = undefined;
+      todo.tString = undefined;
+    } else if(days && todo.t) {
+      todo.t = new Date(new Date(todo.tString).setDate(new Date(todo.tString).getDate() + days));
+      todo.tString = todo.t.toISOString().substr(0, 10);
+    } else if(days && !todo.t) {
+      todo.t = new Date(new Date().setDate(new Date().getDate() + days));
+      todo.tString = todo.t.toISOString().substr(0, 10);
+    }
+    datePickerThreshold.setDate( todo.t );
+    document.getElementById("modalFormInput").value = todo.toString();
+    return Promise.resolve("Success: Threshold date changed to " + todo.tString)
+  } catch(error) {
+    error.functionName = setThreshold.name;
+    return Promise.reject(error);
+  }
+}
 function show(todo, templated) {
   try {
     // remove any previously set data-item attributes
     modalForm.setAttribute("data-item", "");
     // adjust size of recurrence picker input field
     datePickerInput.value = null;
+    datePickerThresholdInput.value = null;
+    // remove highlighted day
+    let selected = document.getElementsByClassName("datepicker-cell day selected focused");
+    [].forEach.call(selected, function (el) {
+      el.classList.remove("selected");
+      el.classList.remove("focused");
+    });
     recurrencePickerInput.value = null;
     document.getElementById("modalFormInput").value = null;
     modalFormAlert.innerHTML = null;
@@ -269,6 +298,9 @@ function show(todo, templated) {
       todo = new TodoTxtItem(todo, [ new DueExtension(), new HiddenExtension(), new RecExtension(), new ThresholdExtension() ]);
       // set the priority
       setPriority(todo.priority);
+      // set date
+      datePicker.dates = [formatDate(todo.due)];
+      datePickerThreshold.dates = [formatDate(todo.t)];
       //
       if(templated === true) {
         // this is a new templated todo task
@@ -307,6 +339,9 @@ function show(todo, templated) {
       if(todo.dueString) {
         datePickerInput.value = todo.dueString;
       }
+      if(todo.tString) {
+        datePickerThresholdInput.value = todo.tString;
+      }
     } else {
       btnItemStatus.classList.add("is-hidden");
     }
@@ -314,6 +349,7 @@ function show(todo, templated) {
     if(userData.useTextarea) toggleInputSize("input");
     // adjust size of picker inputs
     resizeInput(datePickerInput);
+    resizeInput(datePickerThresholdInput);
     resizeInput(recurrencePickerInput);
     // create the modal jail, so tabbing won't leave modal
     createModalJail(modalForm);
@@ -469,4 +505,4 @@ window.onresize = function() {
   }
 }
 
-export { show, resizeInput, setPriority, setDueDate, submitForm, toggleInputSize, getCaretPosition};
+export { show, resizeInput, setPriority, setDueDate, setThreshold, submitForm, toggleInputSize, getCaretPosition};
